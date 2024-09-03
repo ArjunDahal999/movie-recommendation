@@ -19,11 +19,32 @@ app.add_middleware(
 
 # Load movie data once at startup
 movie_data = pd.read_csv("movies.csv", encoding="utf-8")
+movie_data = movie_data.fillna({
+    'budget': 0,
+    'genres': 'Unknown',
+    'homepage': '',
+    'keywords': '',
+    'original_language': 'Unknown',
+    'original_title': 'Unknown',
+    'overview': 'No overview available',
+    'popularity': 0.0,
+    'production_companies': 'Unknown',
+    'production_countries': 'Unknown',
+    'release_date': 'Unknown',
+    'revenue': 0,
+    'runtime': 0.0,
+    'spoken_languages': 'Unknown',
+    'status': 'Unknown',
+    'tagline': '',
+    'title': 'Unknown',
+    'vote_average': 0.0,
+    'vote_count': 0,
+    'cast': 'Unknown',
+    'crew': 'Unknown',
+    'director': 'Unknown'
+})
 selected_features = ['genres', 'keywords', 'tagline', 'cast', 'director']
 
-# Preprocess data
-for feature in selected_features:
-    movie_data[feature] = movie_data[feature].fillna('')
 
 combined_features = movie_data[selected_features].agg(' '.join, axis=1)
 
@@ -50,6 +71,11 @@ def home():
 @app.get('/predict/{moviename}')
 def predict_movies_endpoint(moviename: str):
     return {"Movies": predict_movies(moviename)}
+
+@app.get('/random-movie')
+def random_movie():
+    random_movies = movie_data.sample(n=10)[['budget', 'title', 'director', 'release_date', 'popularity']]
+    return {"data": random_movies.to_dict(orient="records")}
 
 @app.get('/autocomplete/{name}')
 def auto_suggestion(name: str):
