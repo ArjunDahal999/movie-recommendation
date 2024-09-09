@@ -5,6 +5,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import re
+from pydantic import BaseModel
+
 
 app = FastAPI()
 
@@ -19,11 +21,38 @@ app.add_middleware(
 
 # Load movie data once at startup
 movie_data = pd.read_csv("movies.csv", encoding="utf-8")
+
+
+# Preprocess movie data
+movie_data = movie_data.fillna({
+    'budget': 0,
+    'genres': '',
+    'homepage': '',
+    'keywords': '',
+    'original_language': '',
+    'original_title': '',
+    'overview': '',
+    'popularity': 0.0,
+    'production_companies': '',
+    'production_countries': '',
+    'release_date': '',
+    'revenue': 0,
+    'runtime': 0.0,
+    'spoken_languages': '',
+    'status': '',
+    'tagline': '',
+    'title': '',
+    'vote_average': 0.0,
+    'vote_count': 0,
+    'cast': '',
+    'crew': '',
+    'director': ''
+})
+
+#selecting the relevant features for the movie recommendat
 selected_features = ['genres', 'keywords', 'tagline', 'cast', 'director']
 
-# Preprocess data
-for feature in selected_features:
-    movie_data[feature] = movie_data[feature].fillna('')
+
 
 combined_features = movie_data[selected_features].agg(' '.join, axis=1)
 
@@ -43,13 +72,42 @@ def predict_movies(movie: str, top_n: int = 15):
     sorted_similar_movies = sorted(similarity_score, key=lambda x: x[1], reverse=True)
     return [movie_data.iloc[movie[0]]['title'] for movie in sorted_similar_movies[1:top_n+1]]
 
+
 @app.get('/')
 def home():
     return {"status": "Working"}
 
+
 @app.get('/predict/{moviename}')
 def predict_movies_endpoint(moviename: str):
-    return {"Movies": predict_movies(moviename)}
+    movie_titles = predict_movies(moviename)
+    recommended_movies = []
+    for title in movie_titles:
+        movie_info = movie_data[movie_data['title'] == title].iloc[0]
+        recommended_movies.append({
+            'title': movie_info['title'],
+            'director': movie_info['director'],
+            'revenue': int(movie_info['revenue']),
+            'release_date': movie_info['release_date'],
+            'popularity': float(movie_info['popularity']),
+        })
+    return {"data": recommended_movies}
+
+@app.get('/random-movie')
+def random_movie():
+    random_movies = movie_data.sample(n=15)[['revenue', 'title', 'director', 'release_date', 'popularity']]
+    return {"data": random_movies.to_dict(orient="records")}
+
+@app.get('/top-popular-movies')
+def top_popular_movies():
+    top_movies = movie_data.nlargest(15, 'popularity')[['revenue', 'title', 'director', 'release_date', 'popularity']]
+    return {"data": top_movies.to_dict(orient="records")}
+
+@app.get('/highest-grossing-movie')
+def top_popular_movies():
+    top_movies = movie_data.nlargest(15, 'revenue')[['revenue', 'title', 'director', 'release_date', 'popularity']]
+    return {"data": top_movies.to_dict(orient="records")}
+
 
 @app.get('/autocomplete/{name}')
 def auto_suggestion(name: str):

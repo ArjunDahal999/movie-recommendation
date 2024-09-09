@@ -1,0 +1,12 @@
+version: "3.9"
+
+services:
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile # Name of your Dockerfile (if different, update accordingly)
+    ports:
+      - "8000:8000" # Maps host port 8000 to container port 8000
+    volumes:
+      - .:/app # Mounts the current directory to /app in the container for live reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload # Ensures FastAPI reloads on file changes
