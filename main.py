@@ -1,12 +1,10 @@
 import pandas as pd
 import difflib
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import re
-from pydantic import BaseModel
-
+from math import log, sqrt
+from collections import Counter
 
 app = FastAPI()
 # CORS middleware setup
@@ -20,7 +18,6 @@ app.add_middleware(
 
 # Load movie data once at startup
 movie_data = pd.read_csv("movies.csv", encoding="utf-8")
-
 
 # Preprocess movie data
 movie_data = movie_data.fillna({
@@ -48,17 +45,50 @@ movie_data = movie_data.fillna({
     'director': ''
 })
 
-#selecting the relevant features for the movie recommendat
+# Selecting the relevant features for the movie recommendation
 selected_features = ['genres', 'keywords', 'tagline', 'cast', 'director']
 
-
-
+# Combine features
 combined_features = movie_data[selected_features].agg(' '.join, axis=1)
 
-# Create TF-IDF vectorizer and similarity matrix
-vectorizer = TfidfVectorizer()
-feature_vectors = vectorizer.fit_transform(combined_features)
-similarity = cosine_similarity(feature_vectors)
+# Custom TF-IDF implementation
+def compute_tfidf(documents):
+    # Compute term frequency for each document
+    tf = [Counter(doc.split()) for doc in documents]
+    
+    # Compute document frequency
+    df = Counter()
+    for doc in tf:
+        df.update(set(doc))
+    
+    # Compute IDF
+    N = len(documents)
+    idf = {word: log(N / (count + 1)) for word, count in df.items()}
+    
+    # Compute TF-IDF
+    tfidf = []
+    for doc in tf:
+        doc_tfidf = {word: count * idf[word] for word, count in doc.items()}
+        tfidf.append(doc_tfidf)
+    
+    return tfidf
+
+# Custom cosine similarity implementation
+def cosine_similarity(vec1, vec2):
+    intersection = set(vec1.keys()) & set(vec2.keys())
+    numerator = sum([vec1[x] * vec2[x] for x in intersection])
+    
+    sum1 = sum([vec1[x]**2 for x in vec1.keys()])
+    sum2 = sum([vec2[x]**2 for x in vec2.keys()])
+    denominator = sqrt(sum1) * sqrt(sum2)
+    
+    if not denominator:
+        return 0.0
+    else:
+        return float(numerator) / denominator
+
+# Compute TF-IDF vectors
+tfidf_vectors = compute_tfidf(combined_features)
 
 def predict_movies(movie: str, top_n: int = 15):
     list_of_all_titles = movie_data['title'].tolist()
@@ -67,15 +97,22 @@ def predict_movies(movie: str, top_n: int = 15):
         return []
     close_match = find_close_match[0]
     index_of_the_movie = movie_data[movie_data.title == close_match].index[0]
-    similarity_score = list(enumerate(similarity[index_of_the_movie]))
-    sorted_similar_movies = sorted(similarity_score, key=lambda x: x[1], reverse=True)
+    
+    # Compute similarity scores
+    similarity_scores = [
+        (i, cosine_similarity(tfidf_vectors[index_of_the_movie], tfidf_vectors[i]))
+        for i in range(len(tfidf_vectors))
+    ]
+    
+    # Sort by similarity score
+    sorted_similar_movies = sorted(similarity_scores, key=lambda x: x[1], reverse=True)
+    
+    # Return top N similar movies
     return [movie_data.iloc[movie[0]]['title'] for movie in sorted_similar_movies[1:top_n+1]]
-
 
 @app.get('/')
 def home():
     return {"status": "Working"}
-
 
 @app.get('/predict/{moviename}')
 def predict_movies_endpoint(moviename: str):
@@ -107,7 +144,6 @@ def top_popular_movies():
     top_movies = movie_data.nlargest(15, 'revenue')[['revenue', 'title', 'director', 'release_date', 'popularity']]
     return {"data": top_movies.to_dict(orient="records")}
 
-
 @app.get('/autocomplete/{name}')
 def auto_suggestion(name: str):
     if not name:
@@ -123,3 +159,4 @@ def get_movie(name: str):
         return {"data": result.to_dict()}
     except KeyError:
         return {"error": "Movie not found"}
+    
