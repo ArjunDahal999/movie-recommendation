@@ -53,27 +53,25 @@ combined_features = movie_data[selected_features].agg(' '.join, axis=1)
 
 # Custom TF-IDF implementation
 def compute_tfidf(documents):
-    # Compute term frequency for each document
-    tf = [Counter(doc.split()) for doc in documents]
-    
-    # Compute document frequency
-    df = Counter()
-    for doc in tf:
-        df.update(set(doc))
-    
-    # Compute IDF
-    N = len(documents)
-    idf = {word: log(N / (count + 1)) for word, count in df.items()}
-    
-    # Compute TF-IDF
-    tfidf = []
-    for doc in tf:
-        doc_tfidf = {word: count * idf[word] for word, count in doc.items()}
-        tfidf.append(doc_tfidf)
-    
-    return tfidf
+    word_doc_freq = Counter()
+    doc_word_count = []
+    for doc in documents:
+        words = doc.split()
+        word_doc_freq.update(set(words))
+        doc_word_count.append(Counter(words))
 
-# Custom cosine similarity implementation
+    N = len(documents)
+    tfidf_vectors = []
+    for doc_counts in doc_word_count:
+        tfidf = {}
+        for word, count in doc_counts.items():
+            tf = count / sum(doc_counts.values())
+            idf = log(N / (word_doc_freq[word] + 1))
+            tfidf[word] = tf * idf
+        tfidf_vectors.append(tfidf)
+    return tfidf_vectors
+
+# Compute cosine similarity
 def cosine_similarity(vec1, vec2):
     intersection = set(vec1.keys()) & set(vec2.keys())
     numerator = sum([vec1[x] * vec2[x] for x in intersection])
@@ -82,12 +80,9 @@ def cosine_similarity(vec1, vec2):
     sum2 = sum([vec2[x]**2 for x in vec2.keys()])
     denominator = sqrt(sum1) * sqrt(sum2)
     
-    if not denominator:
-        return 0.0
-    else:
-        return float(numerator) / denominator
-
+    return numerator / denominator if denominator else 0
 # Compute TF-IDF vectors
+
 tfidf_vectors = compute_tfidf(combined_features)
 
 def predict_movies(movie: str, top_n: int = 15):
